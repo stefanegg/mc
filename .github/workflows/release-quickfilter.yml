@@ -73,6 +73,8 @@ jobs:
           '
 
       - name: Smoke-test the built binary
+        env:
+          TERM: xterm
         run: |
           "./stage${{ env.INSTALL_PREFIX }}/bin/mc" --version
 
