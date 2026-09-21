@@ -136,6 +136,14 @@ typedef struct
         int chpoint;          // Point after last characters in @ch
     } quick_search;
 
+    struct
+    {
+        gboolean active;
+        GString *buffer;
+        char ch[MB_LEN_MAX];  // Buffer for multi-byte character
+        int chpoint;          // Point after last characters in @ch
+    } quick_filter;
+
     unsigned int content_shift;  // Number of characters of filename need to skip from left side
     unsigned int max_shift;      // Max shift for visible part of current panel
 } WPanel;

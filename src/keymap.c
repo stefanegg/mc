@@ -226,6 +226,7 @@ static const global_keymap_ini_t default_panel_keymap[] = {
     { "PageUp", "pgup; alt-v" },
     { "SelectCodepage", "alt-e" },
     { "Search", "ctrl-s; alt-s" },
+    { "QuickFilter", "ctrl-f; alt-f" },
     { "PanelOtherSync", "alt-i" },
     {
         NULL,

@@ -570,6 +570,41 @@ search pattern will be used for current search.
 .P
 Besides the filename characters, you can also use wildcard
 characters '*' and '?'.
+.\"NODE "  Quick filter"
+.SH "  Quick filter"
+The Quick filter mode narrows the file panel listing to only the entries
+matching the typed pattern, instead of just moving the selection bar. Press
+.I C\-f
+or
+.I Alt\-f
+to start a quick filter in the directory listing.
+.P
+When the filter is active, the user input will be added to the filter
+pattern instead of the command line. If the
+.I Show mini\-status
+option is enabled the filter pattern is shown on the mini\-status line.
+The
+.I Backspace
+or
+.I DEL
+keys can be used to correct typing mistakes.
+.P
+Once applied, the filter stays in effect, including across changing to
+another directory, until cleared by pressing
+.I Esc
+twice. While a filter is applied but not being actively typed into, the
+mini\-status line shows the current filter pattern as a reminder that the
+listing is narrowed.
+.P
+If the
+.I Use quick filter
+panel option is enabled, plain typing in the file panel starts a quick
+filter instead of a quick search, but only while the command line is
+hidden; C\-f/Alt\-f always start a quick filter regardless of this option
+or of command line visibility.
+.P
+Besides the filename characters, you can also use wildcard
+characters '*' and '?'.
 .\"NODE "  Shell Command Line"
 .SH "  Shell Command Line"
 This section lists keys which are useful to avoid excessive typing when

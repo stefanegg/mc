@@ -81,6 +81,7 @@ PutOtherLink = ctrl-r
 [panel]
 CycleListingFormat = alt-t
 Search = ctrl-s; alt-s
+QuickFilter = ctrl-f; alt-f
 Mark = insert; ctrl-t
 MarkUp = shift-up
 MarkDown = shift-down

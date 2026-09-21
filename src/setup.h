@@ -56,6 +56,7 @@ typedef struct
     gboolean permission_mode;   // If TRUE, we use permission highlighting
     qsearch_mode_t qsearch_mode;  // Quick search mode
     select_flags_t select_flags;  // Select/unselect file flags
+    gboolean use_quickfilter;  // If TRUE, typing narrows the listing live instead of quick search
 } panels_options_t;
 
 typedef struct macro_action_t

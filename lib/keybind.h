@@ -77,6 +77,7 @@ enum
     CK_EditUserMenu,
     CK_Search,
     CK_SearchContinue,
+    CK_QuickFilter,
     CK_Replace,
     CK_ReplaceContinue,
     CK_SearchStop,

@@ -143,6 +143,7 @@ panels_options_t panels_options = {
     .permission_mode = FALSE,
     .qsearch_mode = QSEARCH_PANEL_CASE,
     .select_flags = SELECT_MATCH_CASE | SELECT_SHELL_PATTERNS,
+    .use_quickfilter = FALSE,
 };
 
 gboolean easy_patterns = TRUE;
@@ -443,6 +444,7 @@ static const struct
     { "mouse_move_pages", &panels_options.mouse_move_pages },
     { "filetype_mode", &panels_options.filetype_mode },
     { "permission_mode", &panels_options.permission_mode },
+    { "use_quickfilter", &panels_options.use_quickfilter },
     {
         NULL,
         NULL,

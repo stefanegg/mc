@@ -912,6 +912,26 @@ display_mini_info (WPanel *panel)
         return;
     }
 
+    if (panel->quick_filter.active)
+    {
+        tty_setcolor (CORE_INPUT_COLOR);
+        tty_print_char (':');
+        tty_print_string (
+            str_fit_to_term (panel->quick_filter.buffer->str, w->rect.cols - 3, J_LEFT));
+        return;
+    }
+
+    if (panel->quick_filter.buffer->len != 0)
+    {
+        char *msg =
+            g_strdup_printf (_ ("filter: %s (Esc to clear)"), panel->quick_filter.buffer->str);
+
+        tty_setcolor (CORE_MARKED_COLOR);
+        tty_print_string (str_fit_to_term (msg, w->rect.cols - 2, J_LEFT));
+        g_free (msg);
+        return;
+    }
+
     // Status resolves links and show them
     set_colors (panel);
 
@@ -1466,6 +1486,7 @@ panel_destroy (WPanel *p)
 
     g_string_free (p->quick_search.buffer, TRUE);
     g_string_free (p->quick_search.prev_buffer, TRUE);
+    g_string_free (p->quick_filter.buffer, TRUE);
 
     vfs_path_free (p->lwd_vpath, TRUE);
     vfs_path_free (p->cwd_vpath, TRUE);
@@ -2691,6 +2712,8 @@ panel_do_set_filter (WPanel *panel)
     if (ff.handler == SELECT_RESET)
         ff.handler = NULL;
 
+    // the classic filter dialog supersedes any leftover quick filter state
+    g_string_set_size (panel->quick_filter.buffer, 0);
     panel_set_filter (panel, &ff);
 }
 
@@ -2848,6 +2871,173 @@ stop_search (WPanel *panel)
        to the quick_search.prev_buffer */
     if (panel->quick_search.buffer->len != 0)
         mc_g_string_copy (panel->quick_search.prev_buffer, panel->quick_search.buffer);
+
+    display_mini_info (panel);
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/** If the panel's current selection is the ".." entry after a quick filter was
+ * applied, move it to the first real (non-"..") entry instead, when one exists.
+ *
+ * Only handles the ".." case specifically -- if UP_KEEPSEL's by-name lookup landed
+ * on some other (non-dotdot) row because the previously selected file no longer
+ * matches, that's left alone; this is a narrower, intentional scope match to the
+ * reported issue, not a general "jump to best match" behavior.
+ */
+
+static void
+quick_filter_select_first_match (WPanel *panel)
+{
+    const file_entry_t *fe = panel_current_entry (panel);
+    int i;
+
+    if (fe == NULL || !DIR_IS_DOTDOT (fe->fname->str))
+        return;
+
+    for (i = 0; i < panel->dir.len; i++)
+        if (!DIR_IS_DOTDOT (panel->dir.list[i].fname->str))
+        {
+            // panel_set_filter() -> reread_cmd() already repainted the panel with
+            // the wrong (dotdot) selection; this is a second, corrective draw.
+            unselect_item (panel);
+            panel->current = i;
+            select_item (panel);
+            widget_draw (WIDGET (panel));
+            return;
+        }
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/** Apply the current quick filter buffer as the panel's file filter.
+ * An empty buffer clears the filter and restores the full listing.
+ */
+
+static void
+apply_quick_filter (WPanel *panel)
+{
+    char *reg_exp, *esc_str;
+    file_filter_t ff;
+
+    if (panel->quick_filter.buffer->len == 0)
+    {
+        panel_set_filter (panel, NULL);
+        return;
+    }
+
+    ff.value = NULL;
+    ff.handler = NULL;
+    ff.flags = SELECT_SHELL_PATTERNS;
+
+    reg_exp = g_strdup_printf ("*%s*", panel->quick_filter.buffer->str);
+    esc_str = str_escape (reg_exp, -1, ",|\\{}[]", TRUE);
+    g_free (reg_exp);
+
+    ff.handler = mc_search_new (esc_str, NULL);
+    ff.handler->search_type = MC_SEARCH_T_GLOB;
+    ff.handler->is_entire_line = TRUE;
+    ff.handler->is_case_sensitive = FALSE;
+    g_free (esc_str);
+
+    if (!mc_search_prepare (ff.handler))
+    {
+        file_filter_clear (&ff);
+        return;
+    }
+
+    ff.value = g_strdup (panel->quick_filter.buffer->str);
+    panel_set_filter (panel, &ff);
+    quick_filter_select_first_match (panel);
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/** Incremental filter of the panel listing.
+ * @param panel instance of WPanel structure
+ * @param c_code key code
+ */
+
+static void
+do_quick_filter (WPanel *panel, int c_code)
+{
+    if (c_code == KEY_BACKSPACE)
+    {
+        if (panel->quick_filter.buffer->len != 0)
+        {
+            char *act;
+
+            act = panel->quick_filter.buffer->str + panel->quick_filter.buffer->len;
+            str_prev_noncomb_char (&act, panel->quick_filter.buffer->str);
+            g_string_set_size (panel->quick_filter.buffer, act - panel->quick_filter.buffer->str);
+        }
+        panel->quick_filter.chpoint = 0;
+    }
+    else
+    {
+        if (c_code != 0 && (gsize) panel->quick_filter.chpoint < sizeof (panel->quick_filter.ch))
+        {
+            panel->quick_filter.ch[panel->quick_filter.chpoint] = c_code;
+            panel->quick_filter.chpoint++;
+        }
+
+        if (panel->quick_filter.chpoint > 0)
+        {
+            switch (str_is_valid_char (panel->quick_filter.ch, panel->quick_filter.chpoint))
+            {
+            case -2:
+                return;
+            case -1:
+                panel->quick_filter.chpoint = 0;
+                return;
+            default:
+                g_string_append_len (panel->quick_filter.buffer, panel->quick_filter.ch,
+                                     panel->quick_filter.chpoint);
+                panel->quick_filter.chpoint = 0;
+            }
+        }
+    }
+
+    apply_quick_filter (panel);
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/** Start a new quick filter session.
+ * @param panel instance of WPanel structure
+ */
+
+static void
+start_quick_filter (WPanel *panel)
+{
+    panel->quick_filter.active = TRUE;
+    g_string_set_size (panel->quick_filter.buffer, 0);
+    panel->quick_filter.ch[0] = '\0';
+    panel->quick_filter.chpoint = 0;
+    display_mini_info (panel);
+}
+
+/* --------------------------------------------------------------------------------------------- */
+/** Stop accepting quick filter keystrokes.
+ * @param panel instance of WPanel structure
+ * @param clear_filter if TRUE, also clear the applied filter and restore the full listing
+ */
+
+static void
+stop_quick_filter (WPanel *panel, gboolean clear_filter)
+{
+    gboolean has_applied_filter;
+
+    // an applied filter must still be cleared on request even if a navigation
+    // command already deactivated the quick filter session (see panel_execute_cmd())
+    has_applied_filter = clear_filter && panel->quick_filter.buffer->len != 0;
+
+    if (!panel->quick_filter.active && !has_applied_filter)
+        return;
+
+    panel->quick_filter.active = FALSE;
+
+    if (has_applied_filter)
+    {
+        g_string_set_size (panel->quick_filter.buffer, 0);
+        panel_set_filter (panel, NULL);
+    }
 
     display_mini_info (panel);
 }
@@ -3532,6 +3722,8 @@ panel_execute_cmd (WPanel *panel, long command)
 
     if (command != CK_Search)
         stop_search (panel);
+    if (command != CK_QuickFilter)
+        stop_quick_filter (panel, FALSE);
 
     switch (command)
     {
@@ -3680,6 +3872,9 @@ panel_execute_cmd (WPanel *panel, long command)
         break;
     case CK_SearchStop:
         break;
+    case CK_QuickFilter:
+        start_quick_filter (panel);
+        break;
     case CK_PanelOtherSync:
         panel_sync_other (panel);
         break;
@@ -3729,6 +3924,7 @@ panel_key (WPanel *panel, int key)
     if (is_abort_char (key))
     {
         stop_search (panel);
+        stop_quick_filter (panel, TRUE);
         return MSG_HANDLED;
     }
 
@@ -3738,14 +3934,28 @@ panel_key (WPanel *panel, int key)
         return MSG_HANDLED;
     }
 
+    if (panel->quick_filter.active && ((key >= ' ' && key <= 255) || key == KEY_BACKSPACE))
+    {
+        do_quick_filter (panel, key);
+        return MSG_HANDLED;
+    }
+
     command = widget_lookup_key (WIDGET (panel), key);
     if (command != CK_IgnoreKey)
         return panel_execute_cmd (panel, command);
 
     if (!command_prompt && ((key >= ' ' && key <= 255) || key == KEY_BACKSPACE))
     {
-        start_search (panel);
-        do_search (panel, key);
+        if (panels_options.use_quickfilter)
+        {
+            start_quick_filter (panel);
+            do_quick_filter (panel, key);
+        }
+        else
+        {
+            start_search (panel);
+            do_search (panel, key);
+        }
         return MSG_HANDLED;
     }
 
@@ -3812,6 +4022,7 @@ panel_callback (Widget *w, Widget *sender, widget_msg_t msg, int parm, void *dat
     case MSG_UNFOCUS:
         // Janne: look at this for the multiple panel options
         stop_search (panel);
+        stop_quick_filter (panel, FALSE);
         unselect_item (panel);
         return MSG_HANDLED;
 
@@ -4426,6 +4637,7 @@ panel_clean_dir (WPanel *panel)
     panel->dirs_marked = 0;
     panel->total = 0;
     panel->quick_search.active = FALSE;
+    panel->quick_filter.active = FALSE;
     panel->is_panelized = FALSE;
     panel->dirty = TRUE;
     panel->content_shift = 0;
@@ -4519,6 +4731,8 @@ panel_sized_empty_new (const char *panel_name, const WRect *r)
 
     panel->quick_search.buffer = g_string_sized_new (MC_MAXFILENAMELEN);
     panel->quick_search.prev_buffer = g_string_sized_new (MC_MAXFILENAMELEN);
+
+    panel->quick_filter.buffer = g_string_sized_new (MC_MAXFILENAMELEN);
 
     panel->name = g_strdup (panel_name);
     panel->dir_history.name = g_strconcat ("Dir Hist ", panel->name, (char *) NULL);
