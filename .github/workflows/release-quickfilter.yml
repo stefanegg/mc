@@ -1,0 +1,92 @@
+name: release-quickfilter
+
+on:
+  push:
+    tags:
+      - "quickfilter-v*"
+  workflow_dispatch: {}
+
+env:
+  INSTALL_PREFIX: /opt/mc-quickfilter
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    container:
+      image: fedora:latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Install dependencies
+        run: |
+          dnf install -y \
+            git `# Install git inside container` \
+            \
+            autoconf automake gcc gettext-devel groff libtool make pkgconfig \
+            aspell-devel check-devel gpm-devel libX11-devel "pkgconfig(ext2fs)" "pkgconfig(glib-2.0)" "pkgconfig(gmodule-2.0)" "pkgconfig(libssh2)" "pkgconfig(slang)" \
+            \
+            glibc-gconv-extra util-linux `# For tests` \
+            tar
+
+      - uses: actions/checkout@v7
+
+      - name: Bootstrap build system
+        run: ./autogen.sh
+
+      - name: Configure, build, test, and stage-install
+        run: |
+          useradd --home "$(pwd)" build
+          chown -R build "$(pwd)"
+
+          su - build -c ' \
+            ./configure \
+              --prefix="${{ env.INSTALL_PREFIX }}" \
+              --enable-aspell \
+              && \
+            make -j$(nproc) && \
+            make check && \
+            make install DESTDIR="$(pwd)/stage" \
+          '
+
+      - name: Smoke-test the built binary
+        run: |
+          "./stage${{ env.INSTALL_PREFIX }}/bin/mc" --version
+
+      - name: Package tarball
+        id: package
+        run: |
+          VERSION="${GITHUB_REF_NAME:-manual-$(date +%Y%m%d%H%M%S)}"
+          ARCHIVE="mc-quickfilter-${VERSION}-linux-x86_64.tar.gz"
+
+          # tar the staged tree so it extracts to the same absolute prefix
+          # it was built for, e.g.: sudo tar -xzf "$ARCHIVE" -C /
+          tar -C stage -czf "$ARCHIVE" ".${{ env.INSTALL_PREFIX }}"
+
+          echo "archive=${ARCHIVE}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.package.outputs.archive }}
+          path: ${{ steps.package.outputs.archive }}
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/quickfilter-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.package.outputs.archive }}
+          name: "mc quick-filter ${{ steps.package.outputs.version }}"
+          body: |
+            Custom build of Midnight Commander with the opt-in quick-filter panel
+            feature, from the `quick-filter` branch.
+
+            ## Install
+            ```sh
+            sudo tar -xzf ${{ steps.package.outputs.archive }} -C /
+            ${{ env.INSTALL_PREFIX }}/bin/mc
+            ```
+            Or add `${{ env.INSTALL_PREFIX }}/bin` to your `PATH`.
