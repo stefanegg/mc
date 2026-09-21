@@ -12,16 +12,26 @@ env:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os_id: fedora
+            image: fedora:latest
+          - os_id: ubuntu-24.04
+            image: ubuntu:24.04
 
     container:
-      image: fedora:latest
+      image: ${{ matrix.image }}
 
     permissions:
       contents: write
 
     steps:
-      - name: Install dependencies
+      - name: Install dependencies (Fedora)
+        if: matrix.os_id == 'fedora'
         run: |
           dnf install -y \
             git `# Install git inside container` \
@@ -31,6 +41,16 @@ jobs:
             \
             glibc-gconv-extra util-linux `# For tests` \
             tar
+
+      - name: Install dependencies (Ubuntu)
+        if: matrix.os_id == 'ubuntu-24.04'
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          apt-get install -y \
+            git build-essential autoconf automake autopoint check gettext libtool pkg-config groff tar \
+            e2fslibs-dev libaspell-dev libglib2.0-dev libgpm-dev libncurses5-dev libslang2-dev libssh2-1-dev libx11-dev unzip
 
       - uses: actions/checkout@v7
 
@@ -60,7 +80,7 @@ jobs:
         id: package
         run: |
           VERSION="${GITHUB_REF_NAME:-manual-$(date +%Y%m%d%H%M%S)}"
-          ARCHIVE="mc-quickfilter-${VERSION}-linux-x86_64.tar.gz"
+          ARCHIVE="mc-quickfilter-${VERSION}-${{ matrix.os_id }}-linux-x86_64.tar.gz"
 
           # tar the staged tree so it extracts to the same absolute prefix
           # it was built for, e.g.: sudo tar -xzf "$ARCHIVE" -C /
@@ -84,9 +104,13 @@ jobs:
             Custom build of Midnight Commander with the opt-in quick-filter panel
             feature, from the `quick-filter` branch.
 
+            Two builds are attached: one from Fedora (latest), one from Ubuntu 24.04.
+            Pick the one matching (or closest to) your target machine's distro, since
+            these are dynamically-linked binaries tied to that distro's glibc/glib.
+
             ## Install
             ```sh
-            sudo tar -xzf ${{ steps.package.outputs.archive }} -C /
+            sudo tar -xzf <archive> -C /
             ${{ env.INSTALL_PREFIX }}/bin/mc
             ```
             Or add `${{ env.INSTALL_PREFIX }}/bin` to your `PATH`.
