@@ -589,10 +589,11 @@ or
 .I DEL
 keys can be used to correct typing mistakes.
 .P
-Once applied, the filter stays in effect, including across changing to
-another directory, until cleared by pressing
+Once applied, the filter stays in effect within the current directory until
+cleared by pressing
 .I Esc
-twice. While a filter is applied but not being actively typed into, the
+twice, or until the directory is changed, which clears it automatically.
+While a filter is applied but not being actively typed into, the
 mini\-status line shows the current filter pattern as a reminder that the
 listing is narrowed.
 .P

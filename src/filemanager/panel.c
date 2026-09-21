@@ -3014,6 +3014,24 @@ start_quick_filter (WPanel *panel)
 }
 
 /* --------------------------------------------------------------------------------------------- */
+/** Clear an applied quick filter without triggering a redraw.
+ * Used when changing directory, where the caller reloads the panel itself.
+ * @param panel instance of WPanel structure
+ */
+
+static void
+quick_filter_reset (WPanel *panel)
+{
+    if (panel->quick_filter.buffer->len == 0)
+        return;
+
+    g_string_set_size (panel->quick_filter.buffer, 0);
+    MC_PTR_FREE (panel->filter.value);
+    mc_search_free (panel->filter.handler);
+    panel->filter.handler = NULL;
+}
+
+/* --------------------------------------------------------------------------------------------- */
 /** Stop accepting quick filter keystrokes.
  * @param panel instance of WPanel structure
  * @param clear_filter if TRUE, also clear the applied filter and restore the full listing
@@ -3583,6 +3601,7 @@ panel_do_cd_int (WPanel *panel, const vfs_path_t *new_dir_vpath, enum cd_enum cd
 
     // Reload current panel
     panel_clean_dir (panel);
+    quick_filter_reset (panel);
 
     if (!dir_list_load (&panel->dir, panel->cwd_vpath, panel->sort_field->sort_routine,
                         &panel->sort_info, &panel->filter))
